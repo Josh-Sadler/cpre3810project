@@ -1,0 +1,21 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+
+entity extender12t32 is
+  port(
+   i_IN : in  std_logic_vector(12-1 downto 0);
+   i_S  : in  std_logic; -- 0=zero extend, 1=sign extend
+   o_OUT: out std_logic_vector(32-1 downto 0);
+end extender12t32;
+
+architecture dataflow of extender12t32 is
+begin
+
+o_OUT(11 downto 0) <= i_IN; --lower 12 bits always get immediate
+
+with i_S select --in the select branch, either assigns leading bits to 0 if on zero extend mode, or leading bits = signed bit when in sign extend mode. 
+  o_OUT(31 downto 12) <= (others => '0') when '0',
+                         (others => i_IN(11)) when '1',
+                         (others => '0') when others; --precautionary else block
+end dataflow;
+

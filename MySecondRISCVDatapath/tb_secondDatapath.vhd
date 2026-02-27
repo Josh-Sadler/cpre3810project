@@ -1,0 +1,353 @@
+--Author John Murphy
+library IEEE;
+use IEEE.std_logic_1164.all;
+
+entity tb_secondDatapath is
+  generic(gCLK_HPER : time := 50 ns);
+end tb_secondDatapath;
+
+architecture behavior of tb_secondDatapath is
+
+ constant cCLK_PER : time := gCLK_HPER * 2;
+
+ component secondDatapath is
+    port(
+    i_CLK      : in  std_logic;
+    i_RST      : in  std_logic;
+    i_WE       : in  std_logic;
+    i_ALUSrc   : in  std_logic;
+    i_nAdd_Sub : in  std_logic;
+    i_MemWrite : in  std_logic;
+    i_MemToReg : in  std_logic;  
+    i_Extend   : in  std_logic;
+
+    i_WA       : in  std_logic_vector(5-1 downto 0);
+    i_RA1      : in  std_logic_vector(5-1 downto 0);
+    i_RA2      : in  std_logic_vector(5-1 downto 0);
+    i_Imm12    : in  std_logic_vector(12-1 downto 0);
+
+    o_Result   : out std_logic_vector(32-1 downto 0);
+    o_Cout     : out std_logic;
+    o_RD1      : out std_logic_vector(32-1 downto 0);
+    o_RD2      : out std_logic_vector(32-1 downto 0);
+    o_MemQ     : out std_logic_vector(32-1 downto 0);
+    o_WD       : out std_logic_vector(32-1 downto 0));
+  end component;
+
+signal s_CLK      : std_logic := '0'; --clk
+signal s_RST      : std_logic := '0'; --reg reset
+signal s_WE       : std_logic := '0'; --reg wrie enable
+signal s_ALUSrc   : std_logic := '0'; --imm or r2
+signal s_nAdd_Sub : std_logic := '0'; --add or sub
+signal s_MemWrite : std_logic := '0'; --able to write to mem? 
+signal s_MemToReg : std_logic := '0'; --mem stored to reg? 
+signal s_Extend   : std_logic := '1'; -- sign extend for 12-bit immediates
+
+signal s_WA       : std_logic_vector(4 downto 0) := (others => '0');--write address
+signal s_RA1      : std_logic_vector(4 downto 0) := (others => '0'); --reg 1 addr
+signal s_RA2      : std_logic_vector(4 downto 0) := (others => '0'); --reg 2 addr
+signal s_Imm12    : std_logic_vector(11 downto 0) := (others => '0'); --12 bit imm input
+
+signal s_Result   : std_logic_vector(31 downto 0); --addSub result
+signal s_Cout     : std_logic; --addsub cout
+signal s_RD1      : std_logic_vector(31 downto 0); --RegFile output r1
+signal s_RD2      : std_logic_vector(31 downto 0); --RegFile output r2
+signal s_MemQ     : std_logic_vector(31 downto 0); --mem output Q
+signal s_WD       : std_logic_vector(31 downto 0); --Write data input line as feedback from an operation
+
+begin
+
+ DUT: secondDatapath
+   port map(
+   i_CLK      => s_CLK,
+   i_RST      => s_RST,
+   i_WE       => s_WE,
+   i_ALUSrc   => s_ALUSrc,
+   i_nAdd_Sub => s_nAdd_Sub,
+   i_MemWrite => s_MemWrite,
+   i_MemToReg => s_MemToReg,
+   i_Extend   => s_Extend,
+   i_WA       => s_WA,
+   i_RA1      => s_RA1,
+   i_RA2      => s_RA2,
+   i_Imm12    => s_Imm12,
+   o_Result   => s_Result,
+   o_Cout     => s_Cout,
+   o_RD1      => s_RD1,
+   o_RD2      => s_RD2,
+   o_MemQ     => s_MemQ,
+   o_WD       => s_WD);
+
+  -- clock
+  P_CLK : process
+  begin
+    s_CLK <= '0';
+    wait for gCLK_HPER;
+    s_CLK <= '1';
+    wait for gCLK_HPER;
+  end process;
+
+  -- test environment for the given risc-v program
+  P_TB : process
+  begin
+
+    --to add/sub: s_WE=1, s_ALUSrc = 0, s_nAddSub = either, s_MemWrite = 0, s_MemToReg = 0, s_Extend = dont care
+    --to addi/subi: s_WE=1, s_ALUSrc = 1, s_nAddSub = either, s_MemWrite = 0, s_MemToReg = 0, s_Extend = 1
+    --to lw: s_WE=1, s_ALUSrc = 1, s_nAddSub = 0, s_MemWrite = 0, s_MemToReg = 1, s_Extend = 1
+    --to sw: s_WE=1, s_ALUSrc = 1, s_nAddSub = 0, s_MemWrite = 0, s_MemToReg = dont care, s_Extend = 1
+    -- start by resetting the system for proactive measures. 
+    s_RST      <= '1';
+    s_WE       <= '0';
+    s_ALUSrc   <= '0';
+    s_nAdd_Sub <= '0';
+    s_MemWrite <= '0';
+    s_MemToReg <= '0';
+    s_Extend   <= '1';
+    s_WA       <= "00000";
+    s_RA1      <= "00000";
+    s_RA2      <= "00000";
+    s_Imm12    <= x"000";
+    wait for cCLK_PER;
+
+    s_RST <= '0';
+    wait for cCLK_PER;
+
+    -- addi x25, x0, 0 
+    s_WE       <= '1';
+    s_ALUSrc   <= '1';
+    s_nAdd_Sub <= '0';
+    s_MemWrite <= '0';
+    s_MemToReg <= '0';
+    s_RA1      <= "00000";
+    s_RA2      <= "00000";
+    s_WA       <= "11001"; -- x25
+    s_Imm12    <= x"000";
+    wait for cCLK_PER;
+
+    
+    -- addi x26, x0, 256
+    s_WA    <= "11010"; -- x26
+    s_Imm12 <= x"100"; -- 256 
+    wait for cCLK_PER;
+
+
+    -- lw x1, 0(x25)
+    s_WE       <= '1';
+    s_ALUSrc   <= '1'; 
+    s_nAdd_Sub <= '0';
+    s_MemWrite <= '0';
+    s_MemToReg <= '1';-- write back memory output
+    s_RA1      <= "11001"; -- x25
+    s_RA2      <= "00000";
+    s_WA       <= "00001"; -- x1
+    s_Imm12    <= x"000";
+    wait for cCLK_PER;
+
+
+    -- lw x2, 4(x25)
+    s_RA1   <= "11001";
+    s_WA    <= "00010"; -- x2
+    s_Imm12 <= x"004";
+    wait for cCLK_PER;
+
+
+    -- add x1, x1, x2
+    s_ALUSrc   <= '0';
+    s_MemToReg <= '0';
+    s_RA1      <= "00001"; -- x1
+    s_RA2      <= "00010"; -- x2
+    s_WA       <= "00001"; -- x1
+    s_Imm12    <= x"000";
+    wait for cCLK_PER;
+
+    -- sw x1, 0(x26)
+    s_WE       <= '0';
+    s_ALUSrc   <= '1';
+    s_MemWrite <= '1';
+    s_MemToReg <= '0'; -- don't care for store
+    s_RA1      <= "11010"; -- x26 base addr
+    s_RA2      <= "00001"; -- x1 stored data
+    s_Imm12    <= x"000";
+    wait for cCLK_PER;
+
+
+    -- lw x2, 8(x25)
+    s_WE       <= '1';
+    s_MemWrite <= '0';
+    s_MemToReg <= '1';
+    s_RA1      <= "11001";
+    s_RA2      <= "00000";
+    s_WA       <= "00010";
+    s_Imm12    <= x"008";
+    wait for cCLK_PER;
+
+    -- add x1, x1, x2
+    s_ALUSrc   <= '0';
+    s_MemToReg <= '0';
+    s_RA1      <= "00001";
+    s_RA2      <= "00010";
+    s_WA       <= "00001";
+    s_Imm12    <= x"000";
+    wait for cCLK_PER;
+
+    -- sw x1, 4(x26)
+    s_WE       <= '0';
+    s_ALUSrc   <= '1';
+    s_MemWrite <= '1';
+    s_RA1      <= "11010";
+    s_RA2      <= "00001";
+    s_Imm12    <= x"004";
+    wait for cCLK_PER;
+
+    -- lw x2, 12(x25)
+    s_WE       <= '1';
+    s_MemWrite <= '0';
+    s_MemToReg <= '1';
+    s_RA1      <= "11001";
+    s_RA2      <= "00000";
+    s_WA       <= "00010";
+    s_Imm12    <= x"00C";
+    wait for cCLK_PER;
+
+    -- add x1, x1, x2
+    s_ALUSrc   <= '0';
+    s_MemToReg <= '0';
+    s_RA1      <= "00001";
+    s_RA2      <= "00010";
+    s_WA       <= "00001";
+    s_Imm12    <= x"000";
+    wait for cCLK_PER;
+
+    -- sw x1, 8(x26)
+    s_WE       <= '0';
+    s_ALUSrc   <= '1';
+    s_MemWrite <= '1';
+    s_RA1      <= "11010";
+    s_RA2      <= "00001";
+    s_Imm12    <= x"008";
+    wait for cCLK_PER;
+
+    -- lw x2, 16(x25)
+    s_WE       <= '1';
+    s_MemWrite <= '0';
+    s_MemToReg <= '1';
+    s_RA1      <= "11001";
+    s_RA2      <= "00000";
+    s_WA       <= "00010";
+    s_Imm12    <= x"010";
+    wait for cCLK_PER;
+
+    -- add x1, x1, x2
+    s_ALUSrc   <= '0';
+    s_MemToReg <= '0';
+    s_RA1      <= "00001";
+    s_RA2      <= "00010";
+    s_WA       <= "00001";
+    s_Imm12    <= x"000";
+    wait for cCLK_PER;
+
+    -- sw x1, 12(x26)
+    s_WE       <= '0';
+    s_ALUSrc   <= '1';
+    s_MemWrite <= '1';
+    s_RA1      <= "11010";
+    s_RA2      <= "00001";
+    s_Imm12    <= x"00C";
+    wait for cCLK_PER;
+
+    -- lw x2, 20(x25)
+    s_WE       <= '1';
+    s_MemWrite <= '0';
+    s_MemToReg <= '1';
+    s_RA1      <= "11001";
+    s_RA2      <= "00000";
+    s_WA       <= "00010";
+    s_Imm12    <= x"014";
+    wait for cCLK_PER;
+
+    -- add x1, x1, x2
+    s_ALUSrc   <= '0';
+    s_MemToReg <= '0';
+    s_RA1      <= "00001";
+    s_RA2      <= "00010";
+    s_WA       <= "00001";
+    s_Imm12    <= x"000";
+    wait for cCLK_PER;
+
+    -- sw x1, 16(x26)
+    s_WE       <= '0';
+    s_ALUSrc   <= '1';
+    s_MemWrite <= '1';
+    s_RA1      <= "11010";
+    s_RA2      <= "00001";
+    s_Imm12    <= x"010";
+    wait for cCLK_PER;
+
+    -- lw x2, 24(x25)
+    s_WE       <= '1';
+    s_MemWrite <= '0';
+    s_MemToReg <= '1';
+    s_RA1      <= "11001";
+    s_RA2      <= "00000";
+    s_WA       <= "00010";
+    s_Imm12    <= x"018";
+    wait for cCLK_PER;
+
+    -- add x1, x1, x2(last addition)
+    s_ALUSrc   <= '0';
+    s_MemToReg <= '0';
+    s_RA1      <= "00001";
+    s_RA2      <= "00010";
+    s_WA       <= "00001";
+    s_Imm12    <= x"000";
+    wait for cCLK_PER;
+
+
+    -- addi x27, x0, 512 
+    s_WE       <= '1';
+    s_ALUSrc   <= '1';
+    s_MemWrite <= '0';
+    s_MemToReg <= '0';
+    s_RA1      <= "00000";
+    s_RA2      <= "00000";
+    s_WA       <= "11011"; -- x27
+    s_Imm12    <= x"200";
+    wait for cCLK_PER;
+
+
+    -- sw x1, -4(x27)
+    s_WE       <= '0';
+    s_ALUSrc   <= '1';
+    s_MemWrite <= '1';
+    s_RA1      <= "11011"; -- x27
+    s_RA2      <= "00001"; -- x1
+    s_Imm12    <= x"FFC";  -- -4 in hex
+    wait for cCLK_PER;
+
+    -- repeated sw x1, -4(x27)
+    s_RA1   <= "11011";
+    s_RA2   <= "00001";
+    s_Imm12 <= x"FFC";
+    wait for cCLK_PER;
+  
+    s_WE       <= '0'; --sw x1 16(x0)
+    s_ALUSrc   <= '1';
+    s_MemWrite <= '1';
+    s_RA1      <= "00000"; --
+    s_RA2      <= "00001"; -- 
+    s_Imm12    <= x"100";  -- -4 in hex
+    wait for cCLK_PER;
+
+    wait for cCLK_PER;
+
+    
+ --to add/sub: s_WE=1, s_ALUSrc = 0, s_nAddSub = either, s_MemWrite = 0, s_MemToReg = 0, s_Extend = dont care
+    --to addi/subi: s_WE=1, s_ALUSrc = 1, s_nAddSub = either, s_MemWrite = 0, s_MemToReg = 0, s_Extend = 1
+    --to lw: s_WE=1, s_ALUSrc = 1, s_nAddSub = 0, s_MemWrite = 0, s_MemToReg = 1, s_Extend = 1
+    --to sw: s_WE=0, s_ALUSrc = 1, s_nAddSub = 0, s_MemWrite = 1, s_MemToReg = dont care, s_Extend = 1
+    -- start by resetting the system for proactive measures. 
+
+    wait;
+  end process;
+
+end behavior;

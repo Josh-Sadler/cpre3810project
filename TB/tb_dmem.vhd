@@ -1,0 +1,119 @@
+--author John Murphy
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+entity tb_dmem is
+  generic(gCLK_HPER : time :=50 ns);
+end tb_dmem;
+
+architecture behavior of tb_dmem is
+
+  constant cCLK_PER : time := gCLK_HPER * 2;
+  constant cDATA_WIDTH : natural := 32;
+  constant cADDR_WIDTH : natural := 10; --constants created to be same size as mem's size
+
+component mem is
+  generic(
+    constant DATA_WIDTH : natural := 32;
+    constant ADDR_WIDTH : natural := 10);
+  port 
+	(
+		clk		: in std_logic;
+		addr	        : in std_logic_vector((ADDR_WIDTH-1) downto 0);
+		data	        : in std_logic_vector((DATA_WIDTH-1) downto 0);
+		we		: in std_logic := '1';
+		q		: out std_logic_vector((DATA_WIDTH -1) downto 0));
+end component;
+
+signal s_CLK : std_logic := '0'; --clock signal initialized to zero
+signal s_ADDR : std_logic_vector(cADDR_WIDTH-1 downto 0);
+signal s_DATA : std_logic_vector(cDATA_WIDTH-1 downto 0);
+signal s_WE   : std_logic;
+signal s_Q    : std_logic_vector(cDATA_WIDTH-1 downto 0);
+
+begin
+
+
+  --declaring the data memory object
+  dmem : mem
+    generic map(
+      DATA_WIDTH => cDATA_WIDTH,
+      ADDR_WIDTH => cADDR_WIDTH
+    )
+    port map(
+      clk  => s_CLK,
+      addr => s_ADDR,
+      data => s_DATA,
+      we   => s_WE,
+      q    => s_Q
+    );
+
+
+  -- Clock generation
+  P_CLK : process
+  begin
+    s_CLK <= '0';
+    wait for gCLK_HPER;
+    s_CLK <= '1';
+    wait for gCLK_HPER;
+  end process;
+
+
+  -- testbench segment
+   P_TB : process
+  begin
+    
+    -- Initialize signals for the loop
+    s_WE   <= '0';
+    s_ADDR <= "0000000000";
+    s_DATA <= x"00000000";
+    wait for cCLK_PER;
+
+
+    -- Read initial 10 values from addresses 0x000 to 0x009
+    for i in 0 to 9 loop
+      s_WE   <= '0';
+      s_ADDR <= std_logic_vector(to_unsigned(i, 10)); --creates 10 bit wide vector for each i
+      wait for cCLK_PER;
+    end loop;
+
+
+    -- Copy those same 10 values to addresses 0x100 to 0x109
+    -- two steps: read from source address then write value to destination address
+    for i in 0 to 9 loop
+
+      -- Step 1: Read source word at address i
+      s_WE   <= '0';
+      s_ADDR <= std_logic_vector(to_unsigned(i, 10));
+      wait for cCLK_PER;
+
+      -- Put read value onto s_DATA to be stored
+      s_DATA <= s_Q;
+      wait for 1 ns;
+
+      -- Step 2: Write to destination address 0x100 + i
+      s_ADDR <= std_logic_vector(to_unsigned(256 + i, 10)); --256 is base 10 that represents 0x100 offset
+      s_WE   <= '1';
+      wait for cCLK_PER;
+
+    end loop;
+
+    
+    -- disable write to readback
+    s_WE   <= '0';
+    s_DATA <= x"00000000";
+    wait for cCLK_PER;
+
+    
+    -- Read back copied values in 0x100 to 0x109
+    for i in 0 to 9 loop
+      s_WE   <= '0';
+      s_ADDR <= std_logic_vector(to_unsigned(256 + i, 10));
+      wait for cCLK_PER;
+    end loop;
+
+    wait;
+  end process;
+
+end behavior;
